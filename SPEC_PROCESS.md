@@ -151,7 +151,16 @@ brainstorming 技能采用"一次一个问题、优先多选、带推荐项"的�
 
 **对 SPEC/PLAN 的总修订**：仅改 PLAN（Task 1 重构 + 全局约束加权威路径）；SPEC 产品设计无需改动（Codex 亦确认"SPEC 的产品设计无需因此改动"）。修订已提交。
 
-**结论**：冷启动达成了它的设计目的——在最廉价的时点（写第一行代码前）逼出一个我自审漏掉的真实 TDD 顺序 bug。这正是"陌生智能体在你未明文写下的每个假设处受阻"的实证。
+**第二轮（续作，规约修订后）**：在同一 Codex task 续作，重新完整读取修订后的 SPEC+PLAN，新建分支 `codex/cold-start-task1-v2`，在 Windows 宿主用 Codex 随附 Python 3.12.13 建 `.venv` 完成 Task 1：RED 实测 `ModuleNotFoundError: No module named 'coding_harness'` → GREEN `1 passed`。**原阻塞已解除**——陌生智能体能严格按 TDD 完成 Task 1。该实现已通过 fast-forward 合入 `main` 作为正式 Task 1（正确、最小、TDD-faithful）。
+
+第二轮 Codex 又提三项**非阻塞**澄清，我已采纳两项、一项已由权威路径规则覆盖：
+1. **Windows/Docker 运行边界表面冲突（重要，采纳）**：全局约束"Windows 须在 Docker 内"与 Task 1 宿主虚拟环境步骤表面冲突。修订后：明确"worktree/agent 功能与 Task 19+ 集成必须在 Docker Linux；Task 1 纯 scaffold 单测为唯一例外可在宿主 3.12 venv"。
+2. **依赖"精确锁定"范围不明（重要，采纳）**：仅锁直接依赖、传递依赖由镜像构建解析。修订后：明确"直接依赖精确锁定；可复现性由单一 Docker 镜像锚定；可选生成带哈希 lockfile 硬化"。
+3. **文档命名混淆（一般，已覆盖）**：用户口头称"SPEC 改了"实为 PLAN 改；权威路径规则已要求冷启动显式指向精确相对路径，此点不再单独改。
+
+**仍未验证的更深缺陷**：因 Task 1 完成、第二轮范围仅限 Task 1，worktree 根路径约定、`Event` payload schema、`MockLLM` `None` 语义、`run_pipeline` monkeypatch 注入点仍未被陌生智能体触及。保留为实现期重点复核项（建议实现 Task 14/17 时再做一次小范围冷启动或人控复核）。
+
+**结论**：冷启动达成设计目的——第一轮在最廉价时点逼出我自审漏掉的 TDD bootstrap 顺序 bug；第二轮验证修订有效、Task 1 可被陌生智能体严格 TDD 完成，并补充了运行边界与依赖锁定两类非阻塞澄清。
 
 ---
 

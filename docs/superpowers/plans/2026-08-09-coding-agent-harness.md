@@ -11,14 +11,14 @@
 ## 全局约束
 
 - **权威文档路径**：本 PLAN 的权威版本为 `docs/superpowers/plans/2026-08-09-coding-agent-harness.md`；SPEC 权威版本为 `docs/superpowers/specs/2026-08-01-coding-agent-harness-design.md`。若出现日期化多版本并存，以文件名日期最新者为准。陌生智能体冷启动时应被显式指向这两个精确路径，而非泛称 `docs/SPEC.md`。
-- Python `>=3.12`。依赖在 `requirements.txt` 中精确锁定版本，不使用未锁定的 `*`。
+- Python `>=3.12`。依赖在 `requirements.txt` 中**精确锁定直接依赖**（不使用未锁定的 `*`）；传递依赖在镜像构建时由 pip 解析。可复现性由**单一 Docker 镜像**（CI/本地/Release 同一 Dockerfile）锚定——拉取即得，不在每台机器重新解析。可选硬化：生成带哈希的 `requirements.lock`（`pip-compile`/`uv pip compile`），Docker/CI/本地统一从 lockfile 安装；若引入须把 lockfile 纳入版本控制。
 - 包导入根：`src/coding_harness/`。测试在 `tests/`。用 `make test`（即 `pytest -q`）运行测试。
 - `ANTHROPIC_API_KEY`（模式 `sk-ant-…`）绝不进源码、git 历史、日志或镜像。`Redactor` 须从每个 `ToolResult`/`Event` payload 中 scrub 它。
 - Harness 内核不得寄生现成 agent 框架的高层循环（禁止 LangChain `AgentExecutor`/AutoGen/CrewAI/LlamaIndex agent）。只允许调用底层的 chat-completion + tool-call 原语。
 - 机制是代码而非提示词：`classify`、`path_guard`、`command_guard`、correction-loop 转换、HITL、停机判据均为确定性函数/状态机，可用 `MockLLM` 单测。
 - 配置/规则/提示词文件属"内容物"，不计入 harness 实现工作量。
 - `is_deployed: false`；分发 = Docker（GHCR）+ GitHub Release 链接。无 WebUI/FastAPI/SSE/云。
-- 目标平台：`linux/amd64`（容器）。Windows 宿主须在 Docker 内运行，绝不在宿主直接跑 worktree。
+- 目标平台：`linux/amd64`（容器）。**运行边界**：harness 的 worktree/agent 功能与真实集成验证（Task 19 及以后）必须在 Docker Linux 内运行，绝不在 Windows 宿主直接跑 worktree。**唯一例外**：Task 1 的纯 scaffold 单测（不涉及 worktree/agent）可在 Windows 宿主的 Python 3.12 虚拟环境运行，仅供冷启动/本地快速验证；一旦涉及 worktree，回到 Docker。
 
 ## 文件结构
 
@@ -128,7 +128,7 @@ agent-workspace/
 
 安装依赖（执行时点明确写入，避免新环境无 pytest）：
 - 容器内：`pip install -r requirements.txt`
-- 宿主冷启动（可选虚拟环境）：`python -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`（Windows）/ `source .venv/bin/activate && pip install -r requirements.txt`（Linux/macOS）
+- 宿主冷启动（仅 Task 1 scaffold 例外，见全局约束"运行边界"）：`python -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`（Windows）/ `source .venv/bin/activate && pip install -r requirements.txt`（Linux/macOS）
 
 此刻 `src/coding_harness/` 尚不存在——这是 bootstrap，**不创建产品包**。
 
