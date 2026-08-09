@@ -10,6 +10,7 @@
 
 ## 全局约束
 
+- **权威文档路径**：本 PLAN 的权威版本为 `docs/superpowers/plans/2026-08-09-coding-agent-harness.md`；SPEC 权威版本为 `docs/superpowers/specs/2026-08-01-coding-agent-harness-design.md`。若出现日期化多版本并存，以文件名日期最新者为准。陌生智能体冷启动时应被显式指向这两个精确路径，而非泛称 `docs/SPEC.md`。
 - Python `>=3.12`。依赖在 `requirements.txt` 中精确锁定版本，不使用未锁定的 `*`。
 - 包导入根：`src/coding_harness/`。测试在 `tests/`。用 `make test`（即 `pytest -q`）运行测试。
 - `ANTHROPIC_API_KEY`（模式 `sk-ant-…`）绝不进源码、git 历史、日志或镜像。`Redactor` 须从每个 `ToolResult`/`Event` payload 中 scrub 它。
@@ -64,33 +65,17 @@ README.md
 
 ### Task 1：项目脚手架、依赖、make test、gitignore
 
+> **冷启动修订（依 COLD_START_REPORT.md）**：原版 Step 2 的 `make test` 依赖尚未创建的 Makefile，RED 命令在规定时点不可执行。现拆为"测试基础设施 bootstrap → 写失败测试 → RED → GREEN"四段。bootstrap 文件（`Makefile`/`pyproject.toml`/`requirements.txt`/`.gitignore`/`tests/__init__.py`）**不实现 `coding_harness` 任何行为**，仅是测试入口与依赖，TDD 允许先于 RED 创建。
+
 **文件：**
-- Create: `pyproject.toml`, `requirements.txt`, `Makefile`, `.gitignore`, `src/coding_harness/__init__.py`, `tests/__init__.py`
-- Test: `tests/test_scaffold.py`
+- Create: `pyproject.toml`, `requirements.txt`, `Makefile`, `.gitignore`, `tests/__init__.py`, `tests/test_scaffold.py`, `src/coding_harness/__init__.py`
 
 **接口：**
 - Produces: 可导入的 `coding_harness` 包；`make test` 可运行 pytest。
 
-- [ ] **Step 1：编写失败测试**
+- [ ] **Step 1：测试基础设施 bootstrap（不含产品行为）**
 
-```python
-# tests/test_scaffold.py
-def test_package_importable():
-    import coding_harness
-    assert coding_harness.__version__ == "0.1.0"
-```
-
-- [ ] **Step 2：运行测试确认失败**
-
-Run: `make test`
-Expected: FAIL — `ModuleNotFoundError: coding_harness`
-
-- [ ] **Step 3：编写最小实现**
-
-```python
-# src/coding_harness/__init__.py
-__version__ = "0.1.0"
-```
+创建测试入口与工程配置（这些文件不实现 `coding_harness`，仅让 pytest 能运行）：
 
 ```toml
 # pyproject.toml
@@ -137,14 +122,46 @@ agent-workspace/
 .ruff_cache/
 ```
 
+```python
+# tests/__init__.py
+```
+
+安装依赖（执行时点明确写入，避免新环境无 pytest）：
+- 容器内：`pip install -r requirements.txt`
+- 宿主冷启动（可选虚拟环境）：`python -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`（Windows）/ `source .venv/bin/activate && pip install -r requirements.txt`（Linux/macOS）
+
+此刻 `src/coding_harness/` 尚不存在——这是 bootstrap，**不创建产品包**。
+
+- [ ] **Step 2：编写失败测试**
+
+```python
+# tests/test_scaffold.py
+def test_package_importable():
+    import coding_harness
+    assert coding_harness.__version__ == "0.1.0"
+```
+
+- [ ] **Step 3：运行测试确认失败（RED）**
+
+Run: `make test`
+Expected: FAIL — `ModuleNotFoundError: No module named 'coding_harness'`
+（此失败由缺失产品行为导致，非测试基础设施错误——Makefile/pytest 已就绪，是 `import coding_harness` 本身失败。）
+
+- [ ] **Step 4：编写最小实现（GREEN）**
+
+```python
+# src/coding_harness/__init__.py
+__version__ = "0.1.0"
+```
+
 设 `pythonpath=["src"]` 使 `import coding_harness` 可解析。
 
-- [ ] **Step 4：运行测试确认通过**
+- [ ] **Step 5：运行测试确认通过**
 
 Run: `make test`
 Expected: PASS (1 passed)
 
-- [ ] **Step 5：提交**
+- [ ] **Step 6：提交**
 
 ```bash
 git add pyproject.toml requirements.txt Makefile .gitignore src tests
@@ -2367,6 +2384,8 @@ git commit -m "docs: README, AGENT_LOG skeleton, secret-scan gate"
 ---
 
 ## 自审
+
+> **冷启动后修订记录**：经陌生智能体（Codex）冷启动验证（见 `COLD_START_REPORT.md`），Task 1 已按其反馈重构为"bootstrap → 失败测试 → RED → GREEN"，并在全局约束补"权威文档路径"与依赖安装命令。其余 task 未变。Codex 因 Task 1 阻塞未触及更深层 task；worktree 路径约定、`Event` payload schema、`MockLLM` `None` 语义、`run_pipeline` monkeypatch 点为实现期重点复核项。
 
 **1. SPEC 覆盖：**
 - §3.1 AgentLoop → Task 20 ✓

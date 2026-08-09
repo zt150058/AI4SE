@@ -127,23 +127,31 @@ brainstorming 技能采用"一次一个问题、优先多选、带推荐项"的�
 
 ---
 
-## 五、冷启动试运行（§4.5，陌生智能体验证）
+## 五、冷启动试运行（§4.5，陌生智能体验证）——已执行
 
-> 本节为计划待执行项。按通用要求 §4.5，正式实现前须用**一个与主开发智能体不同**的 agent，在**不导入本会话历史**的前提下，仅凭 SPEC + PLAN 自主推进 1–2 个 task（约 1–2 小时），并记录其在何处暂停/提问、暴露了哪些 spec 缺陷。
+**执行情况**：用 OpenAI Codex（GPT-5 系列）做陌生智能体冷启动，全新 session，未导入本会话历史或 memory，仅凭 SPEC + PLAN 自主推进。报告见 `COLD_START_REPORT.md`。隔离分支 `codex/cold-start-validation`。它选择 Task 1（项目脚手架），在 RED 阶段前**主动暂停**，未编写任何产品代码或测试——严格符合 §4.5"遇不确定即暂停询问，而非凭猜测继续"。
 
-**计划做法**：
-- 选定第二个智能体类型（与主开发 Claude Code 不同），开全新 session，不导入 memory。
-- 仅交付 `docs/superpowers/specs/2026-08-01-coding-agent-harness-design.md` + `docs/superpowers/plans/2026-08-09-coding-agent-harness.md`，不补充口头解释。
-- 指定其从 PLAN 选 1–2 个 task（建议 Task 14 校验器 或 Task 17 CorrectionLoop——这两者隐性假设最多）自主推进，遇不确定即暂停询问。
-- 记录其受阻点、与原意不一致的解读、产出与预期差距，并据此修订 SPEC/PLAN（给出修订前后关键 diff）。
+**Codex 暴露的 spec 缺陷（修订前后 diff）**：
 
-**预计最可能暴露的 spec 缺陷**（自审预判，待冷启动验证）：
-- worktree 根路径约定（绝对/相对、谁创建）。
-- `Event` payload schema 字段是否足够明确。
-- `MockLLM` 脚本 DSL 的语义（`None` 表示"无 tool_call"还是"停止"）。
-- `run_pipeline` 在 correction_loop 中的可注入点（测试 monkeypatch 目标）。
+1. **Task 1 RED bootstrap 顺序（阻塞，真实 bug）**：
+   - 修订前：Step 2 `Run: make test`，`Expected: ModuleNotFoundError`；但 `make test` 依赖 Step 3 才创建的 `Makefile`/`pyproject.toml`，且依赖未安装——RED 命令在规定时点不可执行。
+   - 修订后：拆为"Step 1 测试基础设施 bootstrap（`Makefile`/`pyproject.toml`/`requirements.txt`/`.gitignore`/`tests/__init__.py` + 安装依赖，不含产品行为）→ Step 2 写失败测试 → Step 3 RED → Step 4 GREEN"。明确：bootstrap 文件不实现 `coding_harness` 行为，TDD 允许先于 RED 创建。
+   - 处理决策：采纳 Codex 的"Step 0 bootstrap"建议。我自审时漏看此缺陷——这印证 §4.5"你与主 agent 沉淀的隐性上下文会让你高估 spec 清晰度"。
 
-> *本节将在冷启动试运行完成后回填实际结果。*
+2. **依赖安装时点缺失（重要，真实 gap）**：
+   - 修订前：`requirements.txt` 列了锁定版本，但全程无 `pip install` 命令与时点。
+   - 修订后：Task 1 Step 1 显式写入 `pip install -r requirements.txt`（含宿主 venv 与容器两条路径）。
+   - 处理决策：采纳。
+
+3. **文档路径命名（一般）**：用户向 Codex 指向"docs/SPEC.md/docs/PLAN.md"，实际为日期化嵌套路径。Codex 因候选唯一仍能映射，未误读。
+   - 修订后：在 PLAN 全局约束加"权威文档路径"一行，写明两份文档精确相对路径，并要求冷启动时显式指向。
+   - 处理决策：采纳为低优先级护栏。
+
+**Codex 未触及的更深缺陷（我自审预判，仍未验证）**：因 Task 1 阻塞，worktree 根路径约定、`Event` payload schema 字段、`MockLLM` `None` 语义、`run_pipeline` monkeypatch 注入点均未被测试。这些保留为实现期重点复核项，不假装已验证。
+
+**对 SPEC/PLAN 的总修订**：仅改 PLAN（Task 1 重构 + 全局约束加权威路径）；SPEC 产品设计无需改动（Codex 亦确认"SPEC 的产品设计无需因此改动"）。修订已提交。
+
+**结论**：冷启动达成了它的设计目的——在最廉价的时点（写第一行代码前）逼出一个我自审漏掉的真实 TDD 顺序 bug。这正是"陌生智能体在你未明文写下的每个假设处受阻"的实证。
 
 ---
 
