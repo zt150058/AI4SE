@@ -23,6 +23,7 @@
 - 合并 main: 7ed661b。fix: pin click==8.1.7（typer 0.12.5 兼容）。
 
 ## M7 dist + CI（Tasks 23-25）— Dockerfile + GitHub Actions CI + README/AGENT_LOG + 密钥扫描
-- Dockerfile（python:3.12-slim, 非 root, 无 EXPOSE/HEALTHCHECK）。
-- CI: unit-test job + build-image job（GHCR + Release）。
-- README + AGENT_LOG + test_no_secrets 密钥扫描闸。
+- Dockerfile（python:3.12-slim, 非 root, 无 EXPOSE/HEALTHCHECK）。final-fix: COPY pyproject.toml + ENV PYTHONPATH=/app/src（in-image entrypoint + pytest collection）。
+- CI: unit-test job（runs on push+PR, 含 test_docker in-image 验证）+ build-image job（if main, GHCR :latest+:<sha> + Release v-<sha>）。
+- README + AGENT_LOG + test_no_secrets 密钥扫描闸。README 主机命令前缀 PYTHONPATH=src（src 布局，未 pip install）。
+- 合并 main: 4d10d11。63 tests green（+1 skipped test_docker, 主机无 docker）。
