@@ -1,0 +1,11 @@
+# .dockerignore
+.env
+.env.*
+**/*.key
+.git/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+agent-workspace/
+.venv/
