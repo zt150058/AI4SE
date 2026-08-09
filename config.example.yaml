@@ -1,0 +1,10 @@
+worktree_root: ./agent-workspace
+budget_max_iterations: 6
+budget_max_tokens: 50000
+deny_patterns: ['rm -rf', 'git push --force']
+approval_patterns: ['pip install', 'git clone']
+approval_timeout_minutes: 15
+lint_codes_blocking: ['E', 'F']
+memory_store_path: ./memory.db
+llm_provider: anthropic
+llm_model: claude-sonnet-5
