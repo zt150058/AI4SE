@@ -14,7 +14,7 @@ def _make(tmp_path, approvals):
     hitl = HitlMachine(log, ScriptedApprovalGateway(approvals), FrozenClock(0.0))
     d = ToolDispatcher({ActionType.edit_file: FileTool(), ActionType.read_file: FileTool(),
                         ActionType.run_shell: ShellTool()}, tmp_path,
-                       ["rm -rf"], ["pip install"], hitl, log, FrozenClock(0.0))
+                       ["rm -rf"], ["pip install", "approve-me"], hitl, log, FrozenClock(0.0))
     return d, log
 
 def test_dispatch_edit_allowed(tmp_path):
@@ -38,6 +38,6 @@ def test_dispatch_approval_denied_returns_synthetic(tmp_path):
 
 def test_dispatch_approval_approved_runs(tmp_path):
     d, _ = _make(tmp_path, [ApprovalStatus.approved])
-    a = Action(ActionType.run_shell, "", "echo ok", ".")
+    a = Action(ActionType.run_shell, "", "echo approve-me-ok", ".")
     r = asyncio.get_event_loop().run_until_complete(d.dispatch(a, "r1"))
-    assert r.ok and "ok" in r.stdout
+    assert r.ok and "approve-me-ok" in r.stdout

@@ -35,5 +35,3 @@ class ToolDispatcher:
         if action.type == ActionType.edit_file:
             self._log.append(run_id, EventType.EditApplied, {"target": action.target})
         return result
-
-from coding_harness.governance import command_guard  # noqa
