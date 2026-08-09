@@ -27,7 +27,16 @@ Python 版本要求：3.12。
 
 ## 运行
 
-入口点为 `python -m coding_harness`：
+入口点为 `python -m coding_harness`。
+
+> **路径说明：** 本项目为 `src/` 布局且未执行 `pip install` 安装包本身，故 `coding_harness` 不在 `sys.path` 上。主机运行需将 `src/` 加入 `PYTHONPATH`：
+> - Linux / macOS：`export PYTHONPATH=src`（或每条命令前缀 `PYTHONPATH=src `）
+> - Windows PowerShell：`$env:PYTHONPATH = 'src'`
+> - Windows cmd：`set PYTHONPATH=src &&`
+>
+> Docker 镜像已内置 `ENV PYTHONPATH=/app/src`，`docker run` 无需手动设置。
+
+以下示例假设主机已 `export PYTHONPATH=src`（Docker 内同理自动生效）：
 
 ```bash
 # 列出所有子命令
@@ -48,10 +57,10 @@ python -m coding_harness credential clear
 机制演示（三场景：guardrail 拦截、feedback 改变 action、stuck-loop 停止）：
 
 ```bash
-python -c "from coding_harness.demo import demo_mechanisms; import pprint; pprint.pprint(demo_mechanisms())"
+PYTHONPATH=src python -c "from coding_harness.demo import demo_mechanisms; import pprint; pprint.pprint(demo_mechanisms())"
 ```
 
-> **说明：** AnthropicLLM 真实适配器按计划延后实现（`is_deployed: false`），当前 `run` 命令使用 MockLLM（占位实现）；可运行的演示入口为 `demo.py` 的 `demo_mechanisms()`。
+> **说明：** AnthropicLLM 真实适配器按计划延后实现（`is_deployed: false`），当前 `run` 命令使用 MockLLM（占位实现，会立即耗尽脚本，尚不可用于真实修复任务）；可运行的演示入口为 `demo.py` 的 `demo_mechanisms()`。`test` 子命令调用裸 `pytest`，主机需 `pytest` 在 PATH 上（否则用 `python -m pytest` 等价路径）。
 
 ## 分发（Docker + GitHub Release）
 
