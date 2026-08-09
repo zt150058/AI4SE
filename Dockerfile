@@ -8,7 +8,9 @@ COPY src/ src/
 COPY tests/ tests/
 COPY fixtures/ fixtures/
 COPY Makefile .
+COPY pyproject.toml .
 RUN useradd -m appuser
 USER appuser
+ENV PYTHONPATH=/app/src
 ENTRYPOINT ["python", "-m", "coding_harness"]
 CMD ["--help"]
