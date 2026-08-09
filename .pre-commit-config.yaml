@@ -1,0 +1,10 @@
+# .pre-commit-config.yaml
+# Defense-in-depth: fail the commit if a real-shape sk-ant- API key literal is tracked.
+repos:
+  - repo: local
+    hooks:
+      - id: sk-ant-secret-scan
+        name: scan tracked files for real-shape sk-ant- API keys
+        language: system
+        entry: python -c "import re,subprocess,sys; rc=subprocess.call(['git','grep','-nE',r'sk-ant-[A-Za-z0-9]{6,}']); sys.exit(1 if rc==0 else 0)"
+        pass_filenames: false

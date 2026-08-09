@@ -1,0 +1,44 @@
+# .github/workflows/ci.yml
+name: ci
+on: [push, pull_request]
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - run: make test
+  build-image:
+    needs: unit-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/coding-harness:latest
+            ghcr.io/${{ github.repository_owner }}/coding-harness:${{ github.sha }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v-${{ github.sha }}
+          body: |
+            Image: ghcr.io/${{ github.repository_owner }}/coding-harness:${{ github.sha }}
+            Digest: ${{ steps.build.outputs.digest }}
+            Pull: docker pull ghcr.io/${{ github.repository_owner }}/coding-harness:${{ github.sha }}
+            Run: docker run --rm -e ANTHROPIC_API_KEY=$KEY ghcr.io/${{ github.repository_owner }}/coding-harness:${{ github.sha }} run --repo <repo> --test <target_test>
+            Key config: 运行时经 -e ANTHROPIC_API_KEY 注入，绝不烘焙进镜像。
+            Platform: linux/amd64。非交互 RequireApproval 默认拒绝。
