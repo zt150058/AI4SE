@@ -38,5 +38,5 @@ class KeyringCredentialStore(CredentialPort):
     def clear(self) -> None:
         try:
             self._kr.delete_password(self.SERVICE, "api_key")
-        except Exception:
-            pass
+        except self._kr.errors.PasswordDeleteError:
+            pass  # entry already absent — idempotent clear
