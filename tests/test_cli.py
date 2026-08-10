@@ -11,12 +11,26 @@ def test_credential_show_masks(monkeypatch):
     assert "3456" in result.stdout
     assert "abcdef" not in result.stdout
 
-def test_test_subcommand_runs_pytest():
+def test_test_subcommand_dispatches_pytest(monkeypatch):
+    # The `test` subcommand's job is to dispatch `pytest -q` and propagate its
+    # exit code — NOT to run the suite here. Spawning a real pytest would
+    # recursively run the whole project suite (incl. test_docker's multi-minute
+    # docker build) and, on hosts where bare `pytest` resolves (Linux CI),
+    # hang/fork-bomb the run. Real tool execution is exercised by test_docker
+    # in CI; this is a unit test of the dispatch seam.
+    seen = []
+    def fake_call(cmd, **kwargs):
+        seen.append(cmd)
+        return 0
+    monkeypatch.setattr("subprocess.call", fake_call)
     result = runner.invoke(app, ["test"])
-    # Run-boundary: host bare `pytest` not on PATH (Docker-gated real tool exec)
-    # → subprocess.call raises FileNotFoundError → CliRunner catches → exit 1.
-    # In Docker (pytest on PATH) the suite runs green → exit 0.
-    assert result.exit_code in (0, 1)
+    assert seen == [["pytest", "-q"]]
+    assert result.exit_code == 0
+
+def test_test_subcommand_propagates_nonzero_rc(monkeypatch):
+    monkeypatch.setattr("subprocess.call", lambda cmd, **k: 1)
+    result = runner.invoke(app, ["test"])
+    assert result.exit_code == 1
 
 def test_help_lists_subcommands():
     result = runner.invoke(app, ["--help"])
