@@ -1,11 +1,22 @@
 # tests/test_ci.py
+import pytest
 import yaml
 from pathlib import Path
 
+_CI_YML = Path(".github/workflows/ci.yml")
+
+# test_ci verifies the repo's GitHub Actions workflow — a repo-context concern.
+# The product Docker image ships no .github/ (it's a CLI, not a repo snapshot),
+# so this suite skips in-image and runs where the repo is checked out
+# (CI host + dev). Mirrors test_docker skipping when docker is absent.
+pytestmark = pytest.mark.skipif(
+    not _CI_YML.exists(),
+    reason=".github/workflows/ci.yml not present in this context (product image ships no .github/)",
+)
+
 
 def _ci():
-    p = Path(".github/workflows/ci.yml")
-    return yaml.safe_load(p.read_text(encoding="utf-8"))["jobs"]
+    return yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))["jobs"]
 
 
 def test_ci_has_both_jobs():
