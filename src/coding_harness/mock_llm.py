@@ -1,7 +1,13 @@
+"""确定性 MockLLM：按预置脚本顺序返回动作，用于测试与机制演示。
+
+脚本耗尽会抛 IndexError（CorrectionLoop 据此停机）；脚本项为 None 表示
+LLM 不提议动作，对应 SUCCEEDED 停机分支。tokens_used 固定 10（仅作计数占位）。
+"""
 from coding_harness.llm_port import LLMPort, LLMResponse
 from coding_harness.models import Action
 
 class MockLLM(LLMPort):
+    """脚本化 LLM：每次 complete 吐出脚本下一项，确定性可断言。"""
     def __init__(self, script: list) -> None:
         self._script = list(script)
         self._i = 0

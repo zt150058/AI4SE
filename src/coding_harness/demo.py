@@ -1,3 +1,9 @@
+"""§A.6 机制演示：三场景证明 harness 的核心机制可运行。
+
+① 围栏拦截 rm -rf；② 反馈注入改变下一步动作并最终通过；
+③ 同类失败连续重复触发卡死停机。使用 MockLLM + 脚本化 pipeline，
+确定性可断言，不依赖真实 LLM。
+"""
 # src/coding_harness/demo.py
 import asyncio
 from pathlib import Path

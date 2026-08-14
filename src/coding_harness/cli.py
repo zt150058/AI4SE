@@ -1,4 +1,9 @@
-# src/coding_harness/cli.py
+"""CLI 入口：run / test / credential 三组子命令（typer）。
+
+run 命令组装完整管线（AgentLoop+CorrectionLoop+MemoryStore+Dispatcher+HITL）
+但当前用 MockLLM 占位（AnthropicLLM 延后，is_deployed:false）；test 命令派发
+pytest；credential set/show/clear 管理运行时密钥（show 仅掩码显示）。
+"""
 import typer
 from pathlib import Path
 from coding_harness.config import Config, DEFAULT_CONFIG
@@ -38,7 +43,7 @@ def run(repo: str, test: str, config: str = typer.Option("config.example.yaml"))
 def test():
     """运行 harness 测试套件（pytest）。"""
     import subprocess
-    rc = subprocess.call(["pytest", "-q"])
+    rc = subprocess.call(["pytest", "-q"])  # 派发裸 pytest；镜像内 pytest 在 PATH 上
     raise typer.Exit(code=rc)
 
 cred_app = typer.Typer()
@@ -46,14 +51,17 @@ app.add_typer(cred_app, name="credential")
 
 @cred_app.command("set")
 def cred_set():
+    """交互式读取并写入 ANTHROPIC_API_KEY 到环境。"""
     import getpass
     EnvCredentialStore().set(getpass.getpass("ANTHROPIC_API_KEY: "))
 
 @cred_app.command("show")
 def cred_show():
+    """以掩码形式（****<last4>）显示当前密钥，绝不输出明文。"""
     typer.echo(mask_key(EnvCredentialStore().get()))
 
 @cred_app.command("clear")
 def cred_clear():
+    """清除环境中的 ANTHROPIC_API_KEY。"""
     EnvCredentialStore().clear()
     typer.echo("cleared")

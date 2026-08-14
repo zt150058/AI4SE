@@ -1,3 +1,9 @@
+"""数据模型与枚举层（贯穿全 harness 的共享类型定义）。
+
+本模块集中定义所有 dataclass 与 Enum，其余模块通过组合这些类型协作，
+避免跨模块循环依赖。Action 描述 LLM 提议的工具调用；Finding/ValidatorResult/
+FailureReport 描述校验结果与失败分类；Event/Run 描述运行轨迹与状态。
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,6 +11,7 @@ from enum import Enum
 
 
 class ActionType(str, Enum):
+    """LLM 可提议的工具动作类型。"""
     edit_file = "edit_file"
     run_shell = "run_shell"
     run_tests = "run_tests"
@@ -13,6 +20,7 @@ class ActionType(str, Enum):
 
 @dataclass
 class Action:
+    """LLM 提议的一次工具调用（目标 + 载荷 + 工作目录）。"""
     type: ActionType
     target: str
     payload: str
@@ -21,6 +29,7 @@ class Action:
 
 @dataclass
 class ToolResult:
+    """工具执行结果；redacted 标记 stdout/stderr 是否被密钥擦除。"""
     ok: bool
     stdout: str
     stderr: str
@@ -45,6 +54,7 @@ class ValidatorResult:
 
 
 class FailureClass(str, Enum):
+    """失败分类（classifier 据此决定反馈注入与停机判定）。"""
     ImportError = "ImportError"
     SyntaxError = "SyntaxError"
     NameError = "NameError"
@@ -66,6 +76,7 @@ class FailureReport:
 
 
 class EventType(str, Enum):
+    """事件日志类型（EventLog 顺序记录运行轨迹，供可观测/回放）。"""
     StepStarted = "StepStarted"
     ActionProposed = "ActionProposed"
     GuardDecision = "GuardDecision"
@@ -89,6 +100,7 @@ class Event:
 
 
 class RunStatus(str, Enum):
+    """运行终态（CorrectionLoop/AgentLoop 的停机结果）。"""
     RUNNING = "RUNNING"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
@@ -125,6 +137,7 @@ class Approval:
 
 
 class GuardVerdict(str, Enum):
+    """工具围栏判定：放行 / 拒绝 / 需人工审批。"""
     Allow = "Allow"
     Deny = "Deny"
     RequireApproval = "RequireApproval"
