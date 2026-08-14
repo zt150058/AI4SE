@@ -1,9 +1,4 @@
 # Coding Agent Harness — Design (SPEC)
-
-> AI4SE 期末项目 · A · Coding Agent Harness。
-> 本文件由 brainstorming 技能与用户共同设计沉淀，遵循通用要求 §4.2 的 SPEC 结构，
-> 并在「领域与机制设计」一节落实项目文件 A 的额外要求。
-> *Spec-Driven, Subagent-Built, Human-Owned.*
   
 ---
 

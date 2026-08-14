@@ -2,41 +2,42 @@
 
 ## 项目简介
 
-Coding Agent Harness 是一个自实现的编码代理（Coding Agent）运行框架。Agent = LLM + Harness，其中 Harness 内核完全自实现，不寄生在 LangChain / AutoGen / CrewAI / LlamaIndex 等代理框架之上——仅依赖底层的 chat-completion 与 tool-call 原语。本项目的主要贡献在于**确定性反馈回路（deterministic feedback loop）**：validators -> classifier -> CorrectionLoop 状态机，代理提出编辑、运行校验器、对失败分类、注入反馈并重试，在 Pass / 预算耗尽 / 卡死循环 / 无动作四种停机条件下终止。本项目仅以 CLI 方式分发（无 WebUI / FastAPI / 云端部署；`is_deployed: false`）。
+Coding Agent Harness 是一个用 Python 自主实现的编码代理运行框架。它负责调用 LLM、执行文件和 Shell 工具、运行测试，并把失败结果反馈给代理继续修正。
+
+项目的核心是一个可确定性测试的反馈闭环：
+
+```text
+执行修改 → 运行校验 → 分类失败 → 生成反馈 → 再次尝试
+```
+
+Harness 内核不依赖 LangChain、AutoGen、CrewAI 等现成 Agent 框架。主循环、工具分发、治理护栏、HITL 审批、记忆和反馈状态机都由本项目自行实现，并可使用 `MockLLM` 离线测试。
 
 ## 安装
 
+要求 Python 3.12。
+
 ```bash
+python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Python 版本要求：3.12。
+激活虚拟环境：
 
-核心依赖：
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+$env:PYTHONPATH = "src"
+```
 
-- `typer` — CLI 框架
-- `rich` — 终端渲染
-- `keyring` — 凭据安全存储
-- `pyyaml` — 配置文件解析
-- `pytest` — 测试框架
-- `ruff` — 代码检查与格式化
-- `mypy` — 静态类型检查
-- `anthropic` — LLM API 客户端
+```bash
+# Linux / macOS
+source .venv/bin/activate
+export PYTHONPATH=src
+```
 
-> **注意：** 需要固定 `click==8.1.7`（typer 0.12.5 兼容性要求）。
+项目采用 `src/` 目录布局，因此在主机上运行前需要设置 `PYTHONPATH=src`。Docker 镜像已经自动配置该路径。
 
 ## 运行
-
-入口点为 `python -m coding_harness`。
-
-> **路径说明：** 本项目为 `src/` 布局且未执行 `pip install` 安装包本身，故 `coding_harness` 不在 `sys.path` 上。主机运行需将 `src/` 加入 `PYTHONPATH`：
-> - Linux / macOS：`export PYTHONPATH=src`（或每条命令前缀 `PYTHONPATH=src `）
-> - Windows PowerShell：`$env:PYTHONPATH = 'src'`
-> - Windows cmd：`set PYTHONPATH=src &&`
->
-> Docker 镜像已内置 `ENV PYTHONPATH=/app/src`，`docker run` 无需手动设置。
-
-以下示例假设主机已 `export PYTHONPATH=src`（Docker 内同理自动生效）：
 
 ```bash
 # 列出所有子命令
@@ -54,15 +55,23 @@ python -m coding_harness credential show
 python -m coding_harness credential clear
 ```
 
-机制演示（三场景：guardrail 拦截、feedback 改变 action、stuck-loop 停止）：
+运行三场景机制演示：
 
 ```bash
-PYTHONPATH=src python -c "from coding_harness.demo import demo_mechanisms; import pprint; pprint.pprint(demo_mechanisms())"
+python -c "from coding_harness.demo import demo_mechanisms; import pprint; pprint.pprint(demo_mechanisms())"
 ```
 
-> **说明：** AnthropicLLM 真实适配器按计划延后实现（`is_deployed: false`），当前 `run` 命令使用 MockLLM（占位实现，会立即耗尽脚本，尚不可用于真实修复任务）；可运行的演示入口为 `demo.py` 的 `demo_mechanisms()`。`test` 子命令调用裸 `pytest`，主机需 `pytest` 在 PATH 上（否则用 `python -m pytest` 等价路径）。
+演示会确定性复现以下行为：
+
+1. 护栏拦截危险命令。
+2. 一次失败被反馈给 Agent，下一步动作随之改变。
+3. 重复失败达到阈值后，反馈循环自动停止。
+
+> 当前 `run` 命令接入的是 `MockLLM`，用于验证 Harness 机制，尚未接入真实 LLM 完成代码修复。`credential` 命令当前使用环境变量后端，不会跨进程持久保存密钥。
 
 ## 分发（Docker + GitHub Release）
+
+本项目通过 Docker 分发，目标平台为 `linux/amd64`。
 
 ```bash
 # 构建镜像
@@ -72,62 +81,56 @@ docker build -t coding-harness .
 docker run --rm coding-harness test
 ```
 
-CI（`.github/workflows/ci.yml`）在 main 分支推送时自动构建镜像，推送至 GHCR（`ghcr.io/<owner>/coding-harness:<sha>`），并创建 GitHub Release 附带镜像摘要。
+也可以直接拉取已经由 CI 构建的镜像：
 
-`deploy_release_url`（占位，勿替换为真实 owner/repo）：`https://github.com/<owner>/<repo>/releases/tag/v-<sha>`
+```bash
+docker pull ghcr.io/zt150058/coding-harness:latest
+docker run --rm ghcr.io/zt150058/coding-harness:latest --help
+```
 
-`is_deployed: false`。平台：linux/amd64。
+GitHub Actions 会在 `main` 分支更新后执行单元测试、构建镜像、推送至 GHCR，并创建带镜像摘要的 [GitHub Release](https://github.com/zt150058/AI4SE/releases)。
 
 ## 安全边界
 
-- `ANTHROPIC_API_KEY`（形状 `sk-ant-…`）**绝不**出现在源码、git 历史、镜像或日志中。
-- `Redactor` 从每个 ToolResult / Event 的 payload 中擦除 `sk-ant-`。
-- `CredentialStore.status()` 与 `credential show` 仅显示掩码形式 `****<last4>`（绝不显示明文）。
-- `.gitignore` 与 `.dockerignore` 排除 `.env` / `*.key`。
-- 密钥通过运行时环境变量注入（`-e ANTHROPIC_API_KEY`），**绝不**烘焙进镜像。
-- `path_guard` + `command_guard` 对工具作用域进行围栏（Allow / Deny / RequireApproval）。
-- HITL `ApprovalGateway` 在风险操作时暂停等待人工确认；非交互模式下默认拒绝。
-- `tests/test_no_secrets.py` + `.pre-commit-config.yaml` 在提交时扫描真实形状密钥。
+- API Key 不硬编码到源码、Git 历史或 Docker 镜像中。
+- `Redactor` 会在工具结果和事件日志中隐藏符合密钥形状的内容。
+- `path_guard` 限制文件操作范围，阻止访问工作区之外的路径。
+- `command_guard` 对危险命令执行拒绝或要求人工审批。
+- 非交互环境遇到需要审批的操作时默认拒绝。
+- `.gitignore`、`.dockerignore`、测试和 pre-commit hook 共同检查凭据泄漏风险。
 
 ## 目录结构
 
-```
+```text
 src/coding_harness/
-  models.py              # 数据类 / 枚举
-  clock.py               # 时钟抽象
-  redactor.py            # 密钥擦除
-  event_log.py           # 事件日志
-  config.py              # 配置加载
-  credential_store.py    # 凭据安全存储
-  llm_port.py            # LLM 端口接口
-  mock_llm.py            # MockLLM 确定性实现
-  governance.py          # 路径/命令守卫
-  tools.py               # 工具定义
-  approval_gateway.py    # 审批网关
-  hitl.py                # 人在回路
+  agent_loop.py          # Agent 外层主循环
+  correction_loop.py     # 反馈闭环状态机（核心贡献）
+  llm_port.py            # 可注入的 LLM 接口
+  mock_llm.py            # 离线确定性 MockLLM
+
+  tools.py               # 文件与 Shell 工具
   tool_dispatcher.py     # 工具分发
-  validators.py          # 校验器
-  classifier.py          # 失败分类器
+  governance.py          # 路径和命令护栏
+  approval_gateway.py    # 审批接口
+  hitl.py                # 人在回路状态机
+
+  validators.py          # 测试、Lint、类型等校验器
   validator_pipeline.py  # 校验器流水线
-  correction_loop.py     # 深层反馈状态机（核心贡献）
-  memory_store.py        # 记忆存储
-  worktree.py            # 工作树隔离
-  agent_loop.py          # 外层状态机
-  cli.py                 # CLI 入口
-  cli_renderer.py        # CLI 渲染
-  demo.py                # 机制演示
-  __main__.py            # 包入口
+  classifier.py          # 失败分类
 
-tests/                   # 每模块一个测试文件
+  memory_store.py        # SQLite 记忆存储
+  event_log.py           # JSONL 事件日志
+  credential_store.py    # 凭据存储接口
+  redactor.py            # 敏感信息脱敏
+  cli.py                 # CLI 命令
+  demo.py                # 三场景机制演示
 
-fixtures/cart_repo/      # 反馈回路 off-by-one 夹具仓库
+tests/                   # 单元测试与集成测试
+fixtures/cart_repo/      # 反馈闭环测试夹具
+docs/                    # SPEC、PLAN、过程日志与反思报告
 
-Dockerfile
-.dockerignore
-.github/workflows/ci.yml
-.pre-commit-config.yaml
-requirements.txt
-Makefile
-pyproject.toml
-config.example.yaml
+Dockerfile               # Docker 镜像
+.github/workflows/ci.yml # GitHub Actions
+requirements.txt         # Python 依赖
+config.example.yaml      # 配置示例
 ```

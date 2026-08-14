@@ -1,10 +1,5 @@
 # SPEC_PROCESS.md — 与 Superpowers 协作生成 Spec 与 Plan 的过程
 
-> AI4SE 期末项目 · A · Coding Agent Harness
-> 本文件记录与 `brainstorming` + `writing-plans` 技能协作生成 `SPEC` 与 `PLAN` 的全过程，
-> 含关键节点、至少三轮关键迭代的对话节选与处理决策、AI 提议与我的取舍，以及对 brainstorming 技能的反思。
-> 对应通用要求 §4.3 / §4.5。
-
 ---
 
 ## 一、协作概览
@@ -180,6 +175,4 @@ brainstorming 技能采用"一次一个问题、优先多选、带推荐项"的�
 
 **对 Superpowers 方法论的批判**：它假设 (a) spec 写得够清楚，陌生 agent 就能照做；(b) TDD 强制能放大而非阻碍 AI 协作；(c) subagent 颗粒度可由 plan 固定。在本项目里：(a) 大致成立但隐性假设（worktree 约定、事件 schema、mock DSL 语义）仍多，需冷启动验证；(b) 待实现期检验；(c) "每 task 2–5 分钟"与"双层状态机 + WebUI/CLI + 分发"这种规模有张力——深度维度（CorrectionLoop）一个 task 装不下，需在 PLAN 中显式标注重点维度的 task 可适度放大。这些假设的边界，正是本反思要交给评审者的"第一手回答"。
 
----
 
-*本文件为过程证据，与 SPEC/PLAN 同步演进；冷启动试运行完成后将回填 §五实际结果。*

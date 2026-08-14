@@ -1,16 +1,48 @@
 # Coding Agent Harness 实现计划
 
-> **致执行者：** 必须使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 按任务逐个实现本计划。步骤用复选框（`- [ ]`）跟踪进度。
+> **执行状态：已完成。** 本文最初由 `writing-plans` 生成，随后按 `subagent-driven-development` 执行。下方步骤的勾选状态、commit 与验证结果均依据 Git 历史、`.superpowers/sdd/2026-08-09-coding-agent-harness/` 中的 task report 和评审记录回填，不代表事后推测。
 
 **目标：** 自实现一个 coding-agent harness 内核（Python，CLI-only），运行修复型闭环——读代码→改代码→跑校验→分类失败→自我修正；由代码护栏 + HITL 治理；经 Docker + GitHub Release 分发。
 
 **架构：** 双层状态机（外层 `AgentLoop` 任务循环 + 内层 `CorrectionLoop` 反馈闭环）构建于向内的端口依赖之上（`LLMPort`、`ToolPort`、`ApprovalGateway`、`CredentialStore`、`MemoryStore`）。一个 append-only 的 JSONL `EventLog` 作为单一观测/检查点/调试事实源。每个机制均可用 `MockLLM` 离线单测。
 
-**技术栈：** Python 3.12，pytest + asyncio，typer/rich（CLI），keyring（凭据），ruff/mypy（校验器 + 自检），Docker，GitHub Actions。LLM：Anthropic Claude（真实路径）/ `MockLLM`（测试路径）。
+**技术栈：** Python 3.12，pytest + asyncio，typer/rich（CLI），keyring（凭据），ruff/mypy（校验器 + 自检），Docker，GitHub Actions。LLM：可注入的 `LLMPort` + 离线确定性的 `MockLLM`；真实供应商适配器不在本计划范围内。
+
+## 执行结果总表
+
+| Task | 交付内容 | 状态 | 主要 commit | TDD / 评审证据 |
+|---|---|---|---|---|
+| 1 | 脚手架与测试入口 | 完成 | `1a30c8d` | 冷启动先暴露 bootstrap 顺序问题；修订后实测 `ModuleNotFoundError` → 1 passed |
+| 2 | 数据模型与枚举 | 完成 | `929c5ee` | RED：models 模块不存在；GREEN：5 passed |
+| 3 | 时钟端口 | 完成 | `5b55e32` | RED：clock 模块不存在；GREEN：2 focused / 8 full passed |
+| 4 | Redactor | 完成 | `6aa2477` | RED：redactor 模块不存在；GREEN：3 focused / 11 full passed |
+| 5 | EventLog | 完成 | `2f56647` | RED：导入失败；GREEN：3 focused / 14 full passed |
+| 6 | 配置加载器 | 完成 | `c414832` | RED：config 模块不存在；GREEN：1 focused / 15 full passed |
+| 7 | 凭据端口与掩码 | 完成并修复 | `988316f`, `854cbe8` | RED：导入失败；GREEN：17 passed；评审后收窄异常捕获 |
+| 8 | LLMPort 与 MockLLM | 完成 | `90b6447` | RED：mock_llm 模块不存在；GREEN：19 passed；两阶段评审通过 |
+| 9 | 路径/命令治理 | 完成 | `038223c` | RED：governance 模块不存在；GREEN：24 passed |
+| 10 | 文件与 Shell 工具 | 完成 | `39c8cff` | GREEN：28 passed；复核 stdout/stderr 均经过脱敏 |
+| 11 | ApprovalGateway | 完成 | `9b0c04c` | GREEN：30 passed；非交互默认拒绝 |
+| 12 | HITL 状态机 | 完成 | `a36a856` | GREEN：32 passed；事件顺序与 checkpoint 经评审确认 |
+| 13 | ToolDispatcher | 完成并修复 | `69ed768`, `b712616` | GREEN：36 passed；最终评审发现审批通过分支未真正覆盖，修复后复审通过 |
+| 14 | 四类 Validator | 完成 | `bb5bf70` | GREEN：40 passed；解析机制离线可验证 |
+| 15 | 失败分类器 | 完成 | `3276dbd` | GREEN：44 passed；短路优先级经评审 |
+| 16 | ValidatorPipeline | 完成 | `1dcc537` | GREEN：46 passed；按宿主运行边界调整测试断言 |
+| 17 | CorrectionLoop | 完成并补测 | `2db7fc3`, `fa33db3` | GREEN：50 passed；补齐 budget/stuck/None 三个停机分支 |
+| 18 | SQLite 记忆存储 | 完成（有记录偏离） | `6b7e7b5` | GREEN：51 passed；为修复原 brief 的导入缺陷增加一行导入 |
+| 19 | Git worktree 隔离 | 完成 | `1d8d57d` | RED：worktree 模块不存在；GREEN：52 passed |
+| 20 | AgentLoop 外层循环 | 完成 | `f6afc70` | GREEN：53 passed；RunFinished 与按需记忆注入经验证 |
+| 21 | CLI | 完成并修复 | `aeef3fb`, `03c9377`, `5623b4b` | GREEN：56 passed；后续修复 click 兼容和递归 pytest |
+| 22 | 三场景机制演示 | 完成 | `7ed661b` | RED：demo 模块不存在；GREEN：57 passed，三场景确定性复现 |
+| 23 | Docker 分发 | 完成并修复 | `c937f3d`, `e28f2d9`, `77e2644` | 主机 57 passed + 1 skipped；CI 镜像内验证后修复路径与权限 |
+| 24 | CI / GHCR / Release | 完成并修复 | `d270ca3`, `4d10d11`, `615aee4` | unit-test 与 build-image 均通过；补强 CI 结构测试与镜像内跳过条件 |
+| 25 | README、日志骨架、密钥扫描 | 完成 | `86ba033`, `7e5e112`, `7d200d9` | 当时 59 passed + 1 skipped；后续修正 README 命令和 M7 记录 |
+
+**最终补充：** `e19c3ce` 为源码中文文档注释整理；远端 `main` 对应的 GitHub Actions `unit-test` 与 `build-image` 均成功，并生成版本化 Release。
 
 ## 全局约束
 
-- **权威文档路径**：本 PLAN 的权威版本为 `docs/superpowers/plans/2026-08-09-coding-agent-harness.md`；SPEC 权威版本为 `docs/superpowers/specs/2026-08-01-coding-agent-harness-design.md`。若出现日期化多版本并存，以文件名日期最新者为准。陌生智能体冷启动时应被显式指向这两个精确路径，而非泛称 `docs/SPEC.md`。
+- **权威文档路径**：本 PLAN 的权威版本为 `docs/PLAN.md`；SPEC 权威版本为 `docs/SPEC.md`。旧的日期化路径已在最终文档整理时统一迁移，不再作为有效入口。
 - Python `>=3.12`。依赖在 `requirements.txt` 中**精确锁定直接依赖**（不使用未锁定的 `*`）；传递依赖在镜像构建时由 pip 解析。可复现性由**单一 Docker 镜像**（CI/本地/Release 同一 Dockerfile）锚定——拉取即得，不在每台机器重新解析。可选硬化：生成带哈希的 `requirements.lock`（`pip-compile`/`uv pip compile`），Docker/CI/本地统一从 lockfile 安装；若引入须把 lockfile 纳入版本控制。
 - 包导入根：`src/coding_harness/`。测试在 `tests/`。用 `make test`（即 `pytest -q`）运行测试。
 - `ANTHROPIC_API_KEY`（模式 `sk-ant-…`）绝不进源码、git 历史、日志或镜像。`Redactor` 须从每个 `ToolResult`/`Event` payload 中 scrub 它。
@@ -33,7 +65,6 @@ src/coding_harness/
   credential_store.py    # CredentialPort, EnvCredentialStore, KeyringCredentialStore, mask_key()
   llm_port.py            # LLMPort ABC + LLMResponse
   mock_llm.py            # MockLLM + 脚本 DSL
-  anthropic_llm.py       # AnthropicLLM（真实，chat-completion + tool-call）
   governance.py          # path_guard(), command_guard(), GuardVerdict, GuardDecision
   tools.py               # ToolPort ABC, FileTool, ShellTool
   tool_dispatcher.py     # ToolDispatcher（路由 + scope-fence + guardrail + HITL 钩子）
@@ -73,7 +104,7 @@ README.md
 **接口：**
 - Produces: 可导入的 `coding_harness` 包；`make test` 可运行 pytest。
 
-- [ ] **Step 1：测试基础设施 bootstrap（不含产品行为）**
+- [x] **Step 1：测试基础设施 bootstrap（不含产品行为）**
 
 创建测试入口与工程配置（这些文件不实现 `coding_harness`，仅让 pytest 能运行）：
 
@@ -132,7 +163,7 @@ agent-workspace/
 
 此刻 `src/coding_harness/` 尚不存在——这是 bootstrap，**不创建产品包**。
 
-- [ ] **Step 2：编写失败测试**
+- [x] **Step 2：编写失败测试**
 
 ```python
 # tests/test_scaffold.py
@@ -141,13 +172,13 @@ def test_package_importable():
     assert coding_harness.__version__ == "0.1.0"
 ```
 
-- [ ] **Step 3：运行测试确认失败（RED）**
+- [x] **Step 3：运行测试确认失败（RED）**
 
 Run: `make test`
 Expected: FAIL — `ModuleNotFoundError: No module named 'coding_harness'`
 （此失败由缺失产品行为导致，非测试基础设施错误——Makefile/pytest 已就绪，是 `import coding_harness` 本身失败。）
 
-- [ ] **Step 4：编写最小实现（GREEN）**
+- [x] **Step 4：编写最小实现（GREEN）**
 
 ```python
 # src/coding_harness/__init__.py
@@ -156,12 +187,12 @@ __version__ = "0.1.0"
 
 设 `pythonpath=["src"]` 使 `import coding_harness` 可解析。
 
-- [ ] **Step 5：运行测试确认通过**
+- [x] **Step 5：运行测试确认通过**
 
 Run: `make test`
 Expected: PASS (1 passed)
 
-- [ ] **Step 6：提交**
+- [x] **Step 6：提交**
 
 ```bash
 git add pyproject.toml requirements.txt Makefile .gitignore src tests
@@ -179,7 +210,7 @@ git commit -m "chore: project scaffold, deps, make test"
 **接口：**
 - Produces: `Action(type,target,payload,cwd)`、`ToolResult(ok,stdout,stderr,exit_code,redacted)`、`Finding(file,line,code,message,snippet)`、`ValidatorResult(validator,status,findings)`、`FailureClass` 枚举、`FailureReport(klass,priority,payload)`、`EventType` 枚举、`Event(seq,run_id,type,ts,payload)`、`RunStatus` 枚举、`Run(...)`、`ApprovalStatus` 枚举、`Approval(...)`、`GuardVerdict` 枚举、`GuardDecision(verdict,reason)`、`MemoryRecord(...)`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_models.py
@@ -219,12 +250,12 @@ def test_guard_decision_and_approval():
     assert ap.status is ApprovalStatus.pending
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test`
 Expected: FAIL — `ModuleNotFoundError` / `ImportError`。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/models.py
@@ -260,12 +291,12 @@ class Finding:  # placeholder; replaced below
 
 继续定义其余枚举/dataclass：`Finding(file,line,code,message,snippet)`、`ValidatorResult(validator,status,findings:list)`、`FailureClass`（11 成员）、`FailureReport(klass,priority,payload:dict)`、`EventType`（11 成员）、`Event(seq,run_id,type,ts,payload:dict)`、`RunStatus{RUNNING,SUCCEEDED,FAILED,ERRORED,BUDGET_HIT}`、`Run(...)`、`ApprovalStatus{pending,approved,denied,timeout}`、`Approval(...)`、`GuardVerdict{Allow,Deny,RequireApproval}`、`GuardDecision(...)`、`MemoryRecord(...)`。所有枚举用 `str, Enum` 以便 JSON 序列化。
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test`
 Expected: PASS
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/models.py tests/test_models.py
@@ -283,7 +314,7 @@ git commit -m "feat(models): data model and enums"
 **接口：**
 - Produces: `ClockPort.now() -> float`、`SystemClock`、`FrozenClock(t, advance)`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_clock.py
@@ -301,11 +332,11 @@ def test_frozen_clock_stable_and_advanceable():
     assert c.now() == 105.0
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/clock.py
@@ -329,11 +360,11 @@ class FrozenClock(ClockPort):
         self._t += dt
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/clock.py tests/test_clock.py
@@ -351,7 +382,7 @@ git commit -m "feat(clock): clock port with frozen variant for tests"
 **接口：**
 - Produces: `redact(text: str) -> str`、`SECRET_PATTERNS: list[re.Pattern]`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_redactor.py
@@ -372,11 +403,11 @@ def test_scrubs_multiple():
     assert "xxx" not in out and "yyy" not in out
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/redactor.py
@@ -394,11 +425,11 @@ def redact(text: str) -> str:
     return out
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/redactor.py tests/test_redactor.py
@@ -417,7 +448,7 @@ git commit -m "feat(redactor): scrub sk-ant keys from text"
 - Consumes: `ClockPort`（Task 3）、`EventType`/`Event`（Task 2）。
 - Produces: `EventLog(path, clock).append(run_id, event_type, payload) -> Event`、`.events_for(run_id) -> list[Event]`、`.mark_checkpoint(run_id, seq)`、`.latest_checkpoint(run_id) -> int|None`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_event_log.py
@@ -448,11 +479,11 @@ def test_checkpoint_roundtrip(tmp_path):
     assert log.latest_checkpoint("r") == a.seq
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/event_log.py
@@ -496,11 +527,11 @@ class EventLog:
         return self._checkpoints.get(run_id)
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/event_log.py tests/test_event_log.py
@@ -518,7 +549,7 @@ git commit -m "feat(event-log): append-only JSONL with checkpoints"
 **接口：**
 - Produces: `Config` dataclass（字段见全局约束）、`load_config(path) -> Config`、`DEFAULT_CONFIG`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_config.py
@@ -544,11 +575,11 @@ def test_load_config(tmp_path):
     assert cfg.lint_codes_blocking == ["E", "F"]
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/config.py
@@ -578,11 +609,11 @@ def load_config(path: str) -> Config:
 
 创建 `config.example.yaml`，内容镜像测试中的配置。
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/config.py config.example.yaml tests/test_config.py
@@ -601,7 +632,7 @@ git commit -m "feat(config): yaml config loader with defaults"
 - Produces: `CredentialPort` ABC（`get`/`set`/`clear`/`status`）、`EnvCredentialStore`（读 `ANTHROPIC_API_KEY`）、`KeyringCredentialStore`（服务名 `coding-harness`）、`mask_key(key) -> str`（返回 `****last4`）。
 - 注：测试用 `EnvCredentialStore` + 伪 env；`keyring` 实现很薄，CI 中不依赖真实 OS 钥匙串，只测 `mask_key` 与伪后端。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_credential_store.py
@@ -622,11 +653,11 @@ def test_env_store_get_set_clear(monkeypatch):
     assert store.get() is None
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/credential_store.py
@@ -674,11 +705,11 @@ class KeyringCredentialStore(CredentialPort):
             pass
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/credential_store.py tests/test_credential_store.py
@@ -696,7 +727,7 @@ git commit -m "feat(creds): credential port, env store, mask"
 **接口：**
 - Produces: `LLMPort.complete(messages, tools) -> LLMResponse`、`LLMResponse(text, tool_call: Action|None, tokens_used: int)`、`MockLLM(script)`，其中 `script` 是按序消费的 `list[Action|None]`；`None` 表示仅文本响应。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_mock_llm.py
@@ -720,11 +751,11 @@ def test_mock_none_means_text_only():
     assert r.text != ""
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/llm_port.py
@@ -762,11 +793,11 @@ class MockLLM(LLMPort):
         return LLMResponse(text=f"apply {item.target}", tool_call=item, tokens_used=10)
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/llm_port.py src/coding_harness/mock_llm.py tests/test_mock_llm.py
@@ -785,7 +816,7 @@ git commit -m "feat(llm): LLMPort + MockLLM script DSL"
 - Consumes: `Action`、`GuardVerdict`、`GuardDecision`（Task 2）。
 - Produces: `path_guard(action, worktree_root: Path) -> GuardDecision`、`command_guard(action, deny_patterns, approval_patterns) -> GuardDecision`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_governance.py
@@ -817,11 +848,11 @@ def test_command_guard_allows_pytest():
     assert gd.verdict is GuardVerdict.Allow
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/governance.py
@@ -856,11 +887,11 @@ def command_guard(action: Action, deny_patterns: list[str], approval_patterns: l
     return GuardDecision(GuardVerdict.Allow, "command allowed")
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/governance.py tests/test_governance.py
@@ -879,7 +910,7 @@ git commit -m "feat(governance): path_guard + command_guard"
 - Consumes: `Action`、`ActionType`、`ToolResult`、`redact`（Task 4）。
 - Produces: `ToolPort.execute(action) -> ToolResult`、`FileTool`、`ShellTool`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_tools.py
@@ -910,11 +941,11 @@ def test_shell_tool_redacts_key(tmp_path):
     assert r.redacted is True
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/tools.py
@@ -955,11 +986,11 @@ class ShellTool(ToolPort):
         return ToolResult(proc.returncode == 0, out, err, proc.returncode, redacted=redacted)
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/tools.py tests/test_tools.py
@@ -978,7 +1009,7 @@ git commit -m "feat(tools): FileTool + ShellTool with redaction"
 - Consumes: `Approval`、`ApprovalStatus`（Task 2）。
 - Produces: `ApprovalGateway.request(approval: Approval) -> ApprovalStatus`、`ScriptedApprovalGateway(responses)`、`ConsoleApprovalGateway(timeout_minutes, interactive=None)`（非交互 ⇒ `denied`）。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_approval_gateway.py
@@ -999,11 +1030,11 @@ def test_console_noninteractive_denies(monkeypatch):
     assert asyncio.get_event_loop().run_until_complete(gw.request(_ap())) == ApprovalStatus.denied
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/approval_gateway.py
@@ -1039,11 +1070,11 @@ class ConsoleApprovalGateway(ApprovalGateway):
         return ApprovalStatus.approved if ans.strip().lower() == "y" else ApprovalStatus.denied
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/approval_gateway.py tests/test_approval_gateway.py
@@ -1062,7 +1093,7 @@ git commit -m "feat(approval): gateway port + scripted + console"
 - Consumes: `ApprovalGateway`（Task 11）、`EventLog`（Task 5）、`Action`、`Approval`、`EventType`、`ApprovalStatus`。
 - Produces: `HitlState{RUNNING,PAUSED}`、`HitlMachine(event_log, approval_gateway, clock).request(action, run_id, reason, preview) -> ApprovalStatus`——先发 `ApprovalRequested` 再发 `ApprovalReceived`，并标记 checkpoint。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_hitl.py
@@ -1096,11 +1127,11 @@ def test_timeout_marks_checkpoint(tmp_path):
     assert log.latest_checkpoint("r1") is not None
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/hitl.py
@@ -1135,11 +1166,11 @@ class HitlMachine:
         return status
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/hitl.py tests/test_hitl.py
@@ -1158,7 +1189,7 @@ git commit -m "feat(hitl): pause/resume state machine with checkpoints"
 - Consumes: `path_guard`/`command_guard`（Task 9）、`ToolPort` 实现（Task 10）、`HitlMachine`（Task 12）、`EventLog`、`ActionType`、`GuardVerdict`、`ApprovalStatus`。
 - Produces: `ToolDispatcher(...).dispatch(action, run_id) -> ToolResult`。遇 `RequireApproval`：批准则执行，否则返回合成 `ToolResult(ok=False, stderr="action denied: …")`。发 `GuardDecision`/`EditApplied` 事件。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_tool_dispatcher.py
@@ -1206,11 +1237,11 @@ def test_dispatch_approval_approved_runs(tmp_path):
     assert r.ok and "ok" in r.stdout
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/tool_dispatcher.py
@@ -1254,11 +1285,11 @@ class ToolDispatcher:
 from coding_harness.governance import command_guard  # noqa
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/tool_dispatcher.py tests/test_tool_dispatcher.py
@@ -1279,7 +1310,7 @@ git commit -m "feat(dispatcher): route + scope-fence + guardrail + HITL"
 
 **夹具仓库：** `fixtures/cart_repo/cart.py` 含刻意 off-by-one（`total = sum(...) + 1`），`fixtures/cart_repo/test_cart.py` 断言 `total == 9`。使 `pytest` 在已知行失败——反馈闭环的标准信号。
 
-- [ ] **Step 1：编写失败测试 + 夹具**
+- [x] **Step 1：编写失败测试 + 夹具**
 
 ```python
 # tests/test_validators.py
@@ -1320,11 +1351,11 @@ def test_cart():
     assert total([1, 2, 6]) == 9  # fails: returns 10
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL（校验器缺失）。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/validators.py
@@ -1382,11 +1413,11 @@ class TypeValidator:
         return ValidatorResult("mypy", "ok" if rc == 0 else "fail", findings)
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。（需已装 `ruff`/`mypy`/`pytest`，均在 `requirements.txt`。）
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/validators.py tests/test_validators.py fixtures/cart_repo/
@@ -1405,7 +1436,7 @@ git commit -m "feat(validators): import/test/lint/type parsers"
 - Consumes: `ValidatorResult`、`FailureClass`、`FailureReport`（Tasks 2、14）。
 - Produces: `classify(results: list[ValidatorResult]) -> FailureReport`。优先级：Import > Syntax > Collection > NameError > Assertion > TypeError > LintBlocker。全绿返回 `FailureClass.Pass`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_classifier.py
@@ -1435,11 +1466,11 @@ def test_lint_blocker_when_tests_ok():
     assert classify(rs).klass is FailureClass.LintBlocker
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/classifier.py
@@ -1476,11 +1507,11 @@ def classify(results: list[ValidatorResult]) -> FailureReport:
     return FailureReport(FailureClass.Pass, 99, {})
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/classifier.py tests/test_classifier.py
@@ -1499,7 +1530,7 @@ git commit -m "feat(classifier): deterministic failure classification"
 - Consumes: 校验器（Task 14）、`classify`（Task 15）。
 - Produces: `run_pipeline(worktree, target_test, module) -> tuple[list[ValidatorResult], FailureReport]`。顺序 Import →（若 ok）Test → Lint → Type。Import 失败短路（跳过 Test/Lint/Type）。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_validator_pipeline.py
@@ -1522,11 +1553,11 @@ def test_pipeline_short_circuits_on_import_failure(tmp_path, monkeypatch):
     assert "pytest" not in {r.validator for r in results}
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/validator_pipeline.py
@@ -1547,11 +1578,11 @@ def run_pipeline(worktree: Path, target_test: str, module: str):
     return results, classify(results)
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/validator_pipeline.py tests/test_validator_pipeline.py
@@ -1570,7 +1601,7 @@ git commit -m "feat(pipeline): ordered validators with short-circuit"
 - Consumes: `LLMPort`/`MockLLM`（Task 8）、`run_pipeline`+`classify`（Tasks 15–16）、`ToolDispatcher`（Task 13）、`EventLog`、`Config`、`EventType`、`RunStatus`。
 - Produces: `CorrectionState` 枚举（`IDLE|EDIT_APPLIED|VALIDATING|DONE|BUDGET_HIT|FEEDBACK_PREPARED|RETRY`）、`CorrectionLoop(...).run(run_id, worktree, target_test, module, context) -> RunStatus`。停机于 `Pass` / `max_iterations` / `max_tokens` / 连续 N 次相同失败（循环检测）。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_correction_loop.py
@@ -1610,11 +1641,11 @@ def test_pass_on_green_first_try(tmp_path):
 
 （测试 monkeypatch `run_pipeline` 返回 `Pass`，使闭环确定性地终止，不依赖 LLM 真修好代码。）
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/correction_loop.py
@@ -1682,11 +1713,11 @@ class CorrectionLoop:
 from coding_harness.validator_pipeline import run_pipeline  # noqa: E402
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/correction_loop.py tests/test_correction_loop.py
@@ -1704,7 +1735,7 @@ git commit -m "feat(correction-loop): feedback state machine with stuck-detectio
 **接口：**
 - Produces: `MemoryStore.put(record)`、`MemoryStore.relevant(repo, failure_class) -> list[MemoryRecord]`、`SQLiteMemoryStore(path)`、`MemoryRecord`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_memory_store.py
@@ -1721,11 +1752,11 @@ def test_put_and_relevant(tmp_path):
     assert all(r.repo == "repo" for r in hits)
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/memory_store.py
@@ -1755,11 +1786,11 @@ class SQLiteMemoryStore(MemoryStore):
         return [MemoryRecord(r[0], r[1], r[2], r[3], r[4]) for r in rows]
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/memory_store.py tests/test_memory_store.py
@@ -1777,7 +1808,7 @@ git commit -m "feat(memory): self-built sqlite store + retrieve"
 **接口：**
 - Produces: `create_worktree(root, run_id, source_repo) -> Path`——运行 `git worktree add`，返回新 worktree 路径。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_worktree.py
@@ -1796,11 +1827,11 @@ def test_create_worktree(tmp_path):
     assert wt != src
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/worktree.py
@@ -1815,11 +1846,11 @@ def create_worktree(root: Path, run_id: str, source_repo: Path) -> Path:
     return target
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/worktree.py tests/test_worktree.py
@@ -1838,7 +1869,7 @@ git commit -m "feat(worktree): git worktree isolation"
 - Consumes: `CorrectionLoop`（Task 17）、`MemoryStore`（Task 18）、`LLMPort`、`EventLog`、`Config`、`RunRequest`、`Run`、`RunStatus`、`EventType`。
 - Produces: `AgentLoop(...).run(request: RunRequest) -> Run`。构建上下文（系统提示 + 记忆事实 + 失败测试源），调 CorrectionLoop，判停机。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_agent_loop.py
@@ -1877,11 +1908,11 @@ def test_agent_loop_succeeds_when_correction_passes(tmp_path):
     assert any(e.type == EventType.RunFinished for e in log.events_for(run.id))
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/agent_loop.py
@@ -1925,11 +1956,11 @@ def _infer_module(repo, target_test):
     return name
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/agent_loop.py tests/test_agent_loop.py
@@ -1948,7 +1979,7 @@ git commit -m "feat(agent-loop): outer task loop with on-demand memory"
 - Consumes: `AgentLoop`、`CredentialStore`、`EventLog`、`ConsoleApprovalGateway`、`Config`、`ToolDispatcher`、`CorrectionLoop`。
 - Produces: `app` typer 实例；`run --repo --test`、`test`（跑 pytest）、`credential set/show/clear`。`CliRenderer.render(event)` 打印结构化行。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_cli.py
@@ -1973,11 +2004,11 @@ def test_help_lists_subcommands():
     assert "run" in result.stdout and "credential" in result.stdout
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/cli_renderer.py
@@ -2049,11 +2080,11 @@ def cred_clear():
     typer.echo("cleared")
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/cli.py src/coding_harness/cli_renderer.py tests/test_cli.py
@@ -2071,7 +2102,7 @@ git commit -m "feat(cli): run/test/credential commands + renderer"
 **接口：**
 - Produces: `demo_mechanisms()` 在 `MockLLM` 下确定性复现：① 护栏拦截危险动作；② 注入失败→反馈闭环改变下一步；③ 卡死循环检测停机。返回结构化报告 dict。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_demo.py
@@ -2085,11 +2116,11 @@ def test_demo_three_scenes():
     assert report["stuck_loop_stop"]["stopped"] is True
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```python
 # src/coding_harness/demo.py
@@ -2149,11 +2180,11 @@ def demo_mechanisms():
     return out
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add src/coding_harness/demo.py tests/test_demo.py
@@ -2171,7 +2202,7 @@ git commit -m "feat(demo): §A.6 mechanism demonstration scenes"
 **接口：**
 - Produces: 镜像 `coding-harness`；入口 `python -m coding_harness`；`docker run ... coding-harness test` 在镜像内跑套件。无 `EXPOSE`/`HEALTHCHECK`。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_docker.py
@@ -2185,11 +2216,11 @@ def test_image_runs_tests():
     assert r.returncode == 0, r.stderr
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL（无 Dockerfile；测试跳过或失败）。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```dockerfile
 # Dockerfile
@@ -2230,11 +2261,11 @@ if __name__ == "__main__":
     app()
 ```
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS（无 Docker 时跳过，但 Dockerfile 已存在）。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add Dockerfile .dockerignore src/coding_harness/__main__.py tests/test_docker.py
@@ -2252,7 +2283,7 @@ git commit -m "feat(docker): reproducible CLI image, no ports/healthcheck"
 **接口：**
 - Produces: GitHub Actions 含 `unit-test` job（必需名）+ `build-image`（推 GHCR + 创建 Release 并写入镜像 digest）。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_ci.py
@@ -2267,11 +2298,11 @@ def test_ci_has_unit_test_job():
     assert "build-image" in jobs
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → FAIL（无 ci.yml）。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
 ```yaml
 # .github/workflows/ci.yml
@@ -2322,11 +2353,11 @@ jobs:
 
 `.pre-commit-config.yaml` 加一个 `sk-ant-` 的本地 grep hook（`trufflehog` 或本地 hook），失败于跟踪文件中的 `sk-ant-`。保持最小：本地 hook，匹配真实 key 形状 `sk-ant-[A-Za-z0-9]{6,}`。
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
 git add .github/workflows/ci.yml .pre-commit-config.yaml tests/test_ci.py
@@ -2338,13 +2369,13 @@ git commit -m "ci: unit-test + build-image/release to GHCR"
 ### Task 25：README + AGENT_LOG + 密钥扫描闸
 
 **文件：**
-- Create: `README.md`, `AGENT_LOG.md`
+- Create: `README.md`, `docs/AGENT_LOG.md`
 - Test: `tests/test_no_secrets.py`
 
 **接口：**
-- Produces: README 含必备章节（简介/安装/运行/分发/安全/结构）；`AGENT_LOG.md` 骨架；测试断言仓库无真实形状 `sk-ant-` key。
+- Produces: README 含必备章节（简介/安装/运行/分发/安全/结构）；`docs/AGENT_LOG.md` 骨架；测试断言仓库无真实形状 `sk-ant-` key。
 
-- [ ] **Step 1：编写失败测试**
+- [x] **Step 1：编写失败测试**
 
 ```python
 # tests/test_no_secrets.py
@@ -2362,22 +2393,22 @@ def test_no_real_key_shape_in_tracked_files():
     assert not bad, f"found real-shape keys in: {bad}"
 ```
 
-- [ ] **Step 2：运行测试确认失败**
+- [x] **Step 2：运行测试确认失败**
 
 Run: `make test` → 若存在任何真实形状 `sk-ant-…` 字面量则 FAIL。注意：测试用例里出现的 `sk-ant-api03-abcdef123456` 会匹配——需把它们改成运行时拼接的伪 token（如 `"sk-ant-" + "TEST"` 等），或确保只匹配真实 key 形状。本 hook 用 `sk-ant-[A-Za-z0-9]{6,}`，恰好排除仅前缀的合法用法。若仍误报，将测试 fixture 改为 `KEY = "sk-ant-" + "x"*16` 形式运行时构造。
 
-- [ ] **Step 3：编写最小实现**
+- [x] **Step 3：编写最小实现**
 
-写 `README.md`，含必备章节：项目简介 / 安装 / 运行 / 分发（Docker + GitHub Release）/ 安全边界 / 目录结构。写 `AGENT_LOG.md` 为带时间戳骨架，实现期间填充。
+写 `README.md`，含必备章节：项目简介 / 安装 / 运行 / 分发（Docker + GitHub Release）/ 安全边界 / 目录结构。写 `docs/AGENT_LOG.md` 为带时间戳骨架，实现期间填充。
 
-- [ ] **Step 4：运行测试确认通过**
+- [x] **Step 4：运行测试确认通过**
 
 Run: `make test` → PASS。
 
-- [ ] **Step 5：提交**
+- [x] **Step 5：提交**
 
 ```bash
-git add README.md AGENT_LOG.md tests/test_no_secrets.py
+git add README.md docs/AGENT_LOG.md tests/test_no_secrets.py
 git commit -m "docs: README, AGENT_LOG skeleton, secret-scan gate"
 ```
 
@@ -2412,12 +2443,6 @@ git commit -m "docs: README, AGENT_LOG skeleton, secret-scan gate"
 
 ---
 
-## 执行交接
+## 执行归档
 
-计划完成并保存到 `docs/superpowers/plans/2026-08-09-coding-agent-harness.md`。两种执行方式：
-
-**1. Subagent 驱动（推荐）** —— 每个任务派一个新 subagent，任务间两阶段评审，迭代快。使用 superpowers:subagent-driven-development。
-
-**2. 内联执行** —— 在当前会话中用 executing-plans 批量执行，带检查点供评审。
-
-选哪种？
+本计划最终采用 subagent 驱动方式执行：Task 1 由陌生 Codex 冷启动验证；Tasks 2–25 按模块分配新鲜 subagent，并在每个 task 后执行“spec 合规 → 代码质量”两阶段评审。实现期间按评审结果完成了凭据异常处理、HITL 覆盖、CorrectionLoop 停机分支、Docker 路径/权限和 CI 镜像内行为等修复。详细时间线、人工判断与经验见 `docs/AGENT_LOG.md`。
